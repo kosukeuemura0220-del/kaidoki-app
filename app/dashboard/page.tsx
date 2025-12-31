@@ -1,47 +1,111 @@
 "use client";
-import React from 'react';
-import { useWatchList } from '../context/WatchListContext';
-import { Trash2, ShoppingBag, Zap, ArrowLeft } from 'lucide-react';
-import Link from 'next/link';
+
+import { useEffect, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+import Link from "next/link";
+import { BellRing, ArrowRight, TrendingDown, AlertTriangle } from "lucide-react";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export default function DashboardPage() {
-  const { watchList, removeFromWatchList } = useWatchList();
+  const [favorites, setFavorites] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchFavorites = async () => {
+      setLoading(true);
+
+      // 1. favoritesテーブルから登録済みのJANコードを取得
+      const { data: favData, error: favError } = await supabase
+        .from("favorites")
+        .select("jan_code");
+
+      if (favError || !favData || favData.length === 0) {
+        setFavorites([]);
+        setLoading(false);
+        return;
+      }
+
+      // 取得したJANコードのリストを作成
+      const janCodes = favData.map((item) => item.jan_code);
+
+      // 2. そのJANコードの商品情報をproductsテーブルから一括取得
+      const { data: productData, error: prodError } = await supabase
+        .from("products")
+        .select("*")
+        .in("jan_code", janCodes);
+
+      if (productData) {
+        setFavorites(productData);
+      }
+      
+      setLoading(false);
+    };
+
+    fetchFavorites();
+  }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20 font-sans">
-      <div className="bg-white px-6 pt-12 pb-6 flex items-center justify-between shadow-sm sticky top-0 z-10 border-b">
-        <h1 className="text-xl font-black text-gray-900 flex items-center gap-2 tracking-tighter uppercase"><Zap size={20} className="text-blue-600 fill-blue-600" /> KAIDOKI</h1>
-        <Link href="/" className="p-2 bg-gray-100 rounded-full text-gray-400"><ArrowLeft size={20} /></Link>
+    <div className="min-h-screen bg-[#F8F9FB] pb-32 font-sans text-gray-900">
+      {/* ヘッダー */}
+      <div className="bg-white sticky top-0 z-30 px-6 py-5 border-b flex items-center justify-between shadow-sm">
+        <h1 className="text-xl font-black tracking-tight flex items-center gap-2">
+          <BellRing className="w-5 h-5 text-blue-600" />
+          ウォッチリスト
+        </h1>
+        <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+          {favorites.length}件
+        </span>
       </div>
-      <div className="p-6 max-w-md mx-auto">
-        <h2 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-6">ウォッチリスト ({watchList.length})</h2>
-        {watchList.length === 0 ? (
-          <div className="bg-white rounded-[2.5rem] p-12 text-center border shadow-sm mt-4">
-            <p className="text-gray-400 font-bold mb-6 text-sm">監視中の商品はありません</p>
+
+      <div className="max-w-xl mx-auto p-4 space-y-4">
+        {loading ? (
+          <div className="p-10 text-center text-gray-400 font-bold text-sm">読み込み中...</div>
+        ) : favorites.length === 0 ? (
+          <div className="mt-10 flex flex-col items-center justify-center p-8 bg-white rounded-3xl border border-dashed border-gray-300 text-center">
+            <BellRing className="w-12 h-12 text-gray-200 mb-4" />
+            <p className="text-gray-400 font-bold text-sm mb-2">監視中の商品はありません</p>
+            <p className="text-xs text-gray-400">商品ページの「追跡する」ボタンを押すと<br/>ここに表示されます</p>
           </div>
         ) : (
-          <div className="space-y-4">
-            {watchList.map((product: any, index: number) => {
-              // エラーを完全に防ぐガードコード
-              const safePrice = Number(product.price || product.new_price || product.currentPrice || 0);
-              return (
-                <div key={index} className="bg-white rounded-[2.5rem] p-4 shadow-sm border flex gap-4 items-center">
-                  <div className="w-20 h-20 bg-gray-50 rounded-2xl shrink-0 p-2 flex items-center justify-center">
-                    <img src={product.image || product.imageUrl} className="max-w-full max-h-full object-contain mix-blend-multiply" alt="" />
+          <div className="grid gap-3">
+            {favorites.map((product) => (
+              <Link href={`/product/${product.jan_code}`} key={product.id}>
+                <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4 hover:shadow-md transition-all active:scale-[0.98]">
+                  <div className="w-20 h-20 bg-gray-50 rounded-xl flex items-center justify-center shrink-0 p-2">
+                    <img src={product.image_url} alt={product.name} className="max-h-full max-w-full object-contain mix-blend-multiply" />
                   </div>
+                  
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-[11px] font-bold text-gray-800 mb-2 line-clamp-2 leading-snug h-8">{product.name}</h3>
-                    <div className="flex items-end justify-between">
-                      <div className="flex flex-col"><span className="text-red-600 font-black text-lg">¥{safePrice.toLocaleString()}</span></div>
-                      <div className="flex gap-2">
-                        <button onClick={() => removeFromWatchList(product.name)} className="w-9 h-9 bg-gray-50 text-gray-300 rounded-full flex items-center justify-center hover:text-red-500 border border-gray-100"><Trash2 size={14} /></button>
-                        <a href={product.url} target="_blank" className="w-9 h-9 bg-gray-900 text-white rounded-full flex items-center justify-center shadow-lg"><ShoppingBag size={14} /></a>
+                    <div className="flex justify-between items-start">
+                      <h3 className="text-sm font-bold text-gray-900 line-clamp-2 leading-tight mb-1">
+                        {product.name}
+                      </h3>
+                    </div>
+                    
+                    <div className="flex items-end justify-between mt-2">
+                      <div>
+                        <p className="text-[10px] text-gray-400 font-bold">現在価格</p>
+                        <p className="text-lg font-black text-gray-900">¥{product.reference_price?.toLocaleString()}</p>
+                      </div>
+                      
+                      {/* 簡易的な状態バッジ（ダミーロジック） */}
+                      <div className="flex items-center gap-1 bg-green-50 text-green-700 px-2 py-1 rounded-lg">
+                        <TrendingDown className="w-3 h-3" />
+                        <span className="text-[10px] font-black">追跡中</span>
                       </div>
                     </div>
                   </div>
+                  
+                  <div className="text-gray-300">
+                    <ArrowRight className="w-5 h-5" />
+                  </div>
                 </div>
-              );
-            })}
+              </Link>
+            ))}
           </div>
         )}
       </div>
